@@ -169,12 +169,12 @@ if __name__ == "__main__":
     keyframes = SharedKeyframes(manager, h, w)
     states = SharedStates(manager, h, w)
 
-    if not no_viz:
-        viz = mp.Process(
-            target=run_visualization,
-            args=(config, states, keyframes, main2viz, viz2main),
-        )
-        viz.start()
+    # if not no_viz:
+    #     viz = mp.Process(
+    #         target=run_visualization,
+    #         args=(config, states, keyframes, main2viz, viz2main),
+    #     )
+    #     viz.start()
 
     model = load_mast3r(device=device)
     model.share_memory()
@@ -214,6 +214,7 @@ if __name__ == "__main__":
     frames = []
 
     while True:
+        print(f"Processing frame {i}")
         # Step the Webots simulation
         if robot.step(timestep) == -1:
             print("Webots simulation stopped")
@@ -222,7 +223,7 @@ if __name__ == "__main__":
 
         # set motor speeds for testing
         motor_l.setVelocity(max_speed)
-        motor_r.setVelocity(max_speed)
+        motor_r.setVelocity(-max_speed)
 
         mode = states.get_mode()
         msg = try_get_msg(viz2main)
@@ -255,6 +256,12 @@ if __name__ == "__main__":
         )
         # print pose T_WC
         # print(f"Frame {i}, timestamp: {timestamp}, mode: {mode}, T_WC: {T_WC.ravel().cpu().numpy()}")
+
+        # save image 
+        output_dir_path = pathlib.Path("logs/webots_images")
+        output_dir_path.mkdir(parents=True, exist_ok=True)
+        image_path = output_dir_path / f"frame_{i:05d}.png"
+        camera.saveImage(str(image_path), 100)  # Save with 100% quality
 
         frame = create_frame(i, img, T_WC, img_size=dataset.img_size, device=device)
 

@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import pyrealsense2 as rs
 import yaml
+from controller import Robot  # Import Webots Robot class
 
 from mast3r_slam.mast3r_utils import resize_img
 from mast3r_slam.config import config
@@ -274,6 +275,32 @@ class RGBFiles(MonocularDataset):
         self.timestamps = np.arange(0, len(self.rgb_files)).astype(self.dtype) / 30.0
 
 
+class WebotsDataset(MonocularDataset):
+    def __init__(self, robot, camera):
+        super().__init__()
+        self.use_calibration = False
+        self.dataset_path = None
+        self.save_results = False
+        self.robot = robot
+        self.camera = camera
+        self.w = self.camera.getWidth()
+        self.h = self.camera.getHeight()
+
+    def __len__(self):
+        return 999999
+
+    def get_timestamp(self, idx):
+        return self.timestamps[idx]
+
+    def read_img(self, idx):
+        image = self.camera.getImage()
+        if not image:
+            raise ValueError("Failed to read image from Webots camera")
+        img = np.frombuffer(image, np.uint8).reshape((self.h, self.w, 4))
+        img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+        self.timestamps.append(idx / 30.0)
+        return img.astype(self.dtype)
+
 class Intrinsics:
     def __init__(self, img_size, W, H, K_orig, K, distortion, mapx, mapy):
         self.img_size = img_size
@@ -317,7 +344,7 @@ class Intrinsics:
         return Intrinsics(img_size, W, H, K, K_opt, distortion, mapx, mapy)
 
 
-def load_dataset(dataset_path):
+def load_dataset(dataset_path, robot=None, camera=None):
     split_dataset_type = dataset_path.split("/")
     if "tum" in split_dataset_type:
         return TUMDataset(dataset_path)
@@ -331,7 +358,10 @@ def load_dataset(dataset_path):
         return RealsenseDataset()
     if "webcam" in split_dataset_type:
         return Webcam()
-
+    if "webots" in split_dataset_type:
+        if robot is None or camera is None:
+            raise ValueError("WebotsDataset requires robot and camera objects")
+        return WebotsDataset(robot, camera)
     ext = split_dataset_type[-1].split(".")[-1]
     if ext in ["mp4", "avi", "MOV", "mov"]:
         return MP4Dataset(dataset_path)

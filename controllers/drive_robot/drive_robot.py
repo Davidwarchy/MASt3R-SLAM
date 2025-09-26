@@ -128,7 +128,7 @@ if __name__ == "__main__":
     torch.set_grad_enabled(False)
     device = "cuda:0"
     save_frames = False
-    datetime_now = str(datetime.datetime.now()).replace(" ", "_")
+    datetime_now = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S')
 
     # Hardcode defaults
     dataset_path = "webots"
@@ -224,7 +224,7 @@ if __name__ == "__main__":
             motor_r.setVelocity(max_speed)
 
         # step for the given velocities 
-        for _ in range(10):
+        for _ in range(50):
             if robot.step(timestep) == -1:
                 print("Webots simulation stopped")
                 states.set_Mode(Mode.TERMINATED)
@@ -277,7 +277,7 @@ if __name__ == "__main__":
         poses.append((i, timestamp, movement, pose_data))
         print(f"Frame {i}, Timestamp: {timestamp}, Movement: {movement}, T_WC: {pose_data}")
 
-        output_dir_path = pathlib.Path("logs/webots_images")
+        output_dir_path = pathlib.Path(f"logs/webots_images/{datetime_now}")
         output_dir_path.mkdir(parents=True, exist_ok=True)
         image_path = output_dir_path / f"frame_{i:05d}.png"
         camera.saveImage(str(image_path), 100)

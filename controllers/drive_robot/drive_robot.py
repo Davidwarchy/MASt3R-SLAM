@@ -18,6 +18,7 @@ from mast3r_slam.mast3r_utils import load_mast3r, load_retriever, mast3r_inferen
 from mast3r_slam.multiprocess_utils import new_queue, try_get_msg
 from mast3r_slam.tracker import FrameTracker
 from mast3r_slam.visualization import WindowMsg, run_visualization
+import random 
 
 def relocalization(frame, keyframes, factor_graph, retrieval_database):
     with keyframes.lock:
@@ -143,13 +144,12 @@ if __name__ == "__main__":
     motor_r = robot.getDevice("motor_2")
 
     motor_l.setPosition(float('inf'))
-    motor_l.setVelocity(0.0) 
+    motor_l.setVelocity(0.0)
     motor_r.setPosition(float('inf'))
-    motor_r.setVelocity(0.0) 
+    motor_r.setVelocity(0.0)
 
-    max_speed = torch.pi * 2 
+    max_speed = torch.pi * 2
 
-    # step the simulation once to get camera parameters
     robot.step(timestep)
 
     load_config(config_path)
@@ -160,21 +160,12 @@ if __name__ == "__main__":
     main2viz = new_queue(manager, no_viz)
     viz2main = new_queue(manager, no_viz)
 
-    # Pass robot and camera to WebotsDataset
     dataset = load_dataset(dataset_path, robot=robot, camera=camera)
     dataset.subsample(config["dataset"]["subsample"])
     h, w = dataset.get_img_shape()[0]
 
-
     keyframes = SharedKeyframes(manager, h, w)
     states = SharedStates(manager, h, w)
-
-    # if not no_viz:
-    #     viz = mp.Process(
-    #         target=run_visualization,
-    #         args=(config, states, keyframes, main2viz, viz2main),
-    #     )
-    #     viz.start()
 
     model = load_mast3r(device=device)
     model.share_memory()
@@ -192,7 +183,6 @@ if __name__ == "__main__":
         )
         keyframes.set_intrinsics(K)
 
-    # remove the trajectory from the previous run
     if dataset.save_results:
         save_dir, seq_name = eval.prepare_savedir(args, dataset)
         traj_file = save_dir / f"{seq_name}.txt"
@@ -212,18 +202,33 @@ if __name__ == "__main__":
     fps_timer = time.time()
 
     frames = []
+    poses = []
+    movement_types = ["left", "right", "forward"]
 
     while True:
         print(f"Processing frame {i}")
-        # Step the Webots simulation
         if robot.step(timestep) == -1:
             print("Webots simulation stopped")
-            states.set_mode(Mode.TERMINATED)
+            states.set_Mode(Mode.TERMINATED)
             break
 
-        # set motor speeds for testing
-        motor_l.setVelocity(max_speed)
-        motor_r.setVelocity(-max_speed)
+        movement = random.choice(movement_types)
+        if movement == "left":
+            motor_l.setVelocity(-max_speed * 0.5)
+            motor_r.setVelocity(max_speed * 0.5)
+        elif movement == "right":
+            motor_l.setVelocity(max_speed * 0.5)
+            motor_r.setVelocity(-max_speed * 0.5)
+        else:  # forward
+            motor_l.setVelocity(max_speed)
+            motor_r.setVelocity(max_speed)
+
+        # step for the given velocities 
+        for _ in range(10):
+            if robot.step(timestep) == -1:
+                print("Webots simulation stopped")
+                states.set_Mode(Mode.TERMINATED)
+                break
 
         mode = states.get_mode()
         msg = try_get_msg(viz2main)
@@ -248,25 +253,38 @@ if __name__ == "__main__":
         if save_frames:
             frames.append(img)
 
-        # get frames last camera pose
         T_WC = (
             lietorch.Sim3.Identity(1, device=device)
             if i == 0
             else states.get_frame().T_WC
         )
-        # print pose T_WC
-        # print(f"Frame {i}, timestamp: {timestamp}, mode: {mode}, T_WC: {T_WC.ravel().cpu().numpy()}")
 
-        # save image 
+        # Debug Sim3 object
+        print(f"Type: {type(T_WC)}")
+        print(f"T_WC for frame {i}: {T_WC}")
+        print(f"T_WC shape: {T_WC.shape}")
+        print(f"T_WC values: {T_WC}")
+
+        # Extract pose data
+        try:
+            pose_data = T_WC.vec().cpu().numpy()  # Try using .vec() method
+        except AttributeError:
+            # Fallback: extract quaternion and translation manually
+            translation = T_WC.trans.cpu().numpy()
+            rotation = T_WC.quat.cpu().numpy()
+            pose_data = np.concatenate([rotation, translation])
+
+        poses.append((i, timestamp, movement, pose_data))
+        print(f"Frame {i}, Timestamp: {timestamp}, Movement: {movement}, T_WC: {pose_data}")
+
         output_dir_path = pathlib.Path("logs/webots_images")
         output_dir_path.mkdir(parents=True, exist_ok=True)
         image_path = output_dir_path / f"frame_{i:05d}.png"
-        camera.saveImage(str(image_path), 100)  # Save with 100% quality
+        camera.saveImage(str(image_path), 100)
 
         frame = create_frame(i, img, T_WC, img_size=dataset.img_size, device=device)
 
         if mode == Mode.INIT:
-            # Initialize via mono inference, and encoded features neeed for database
             X_init, C_init = mast3r_inference_mono(model, frame)
             frame.update_pointmap(X_init, C_init)
             keyframes.append(frame)
@@ -287,7 +305,6 @@ if __name__ == "__main__":
             frame.update_pointmap(X, C)
             states.set_frame(frame)
             states.queue_reloc()
-            # In single threaded mode, make sure relocalization happen for every frame
             while config["single_thread"]:
                 with states.lock:
                     if states.reloc_sem.value == 0:
@@ -300,17 +317,26 @@ if __name__ == "__main__":
         if add_new_kf:
             keyframes.append(frame)
             states.queue_global_optimization(len(keyframes) - 1)
-            # In single threaded mode, wait for the backend to finish
             while config["single_thread"]:
                 with states.lock:
                     if len(states.global_optimizer_tasks) == 0:
                         break
                 time.sleep(0.01)
-        # log time
+
         if i % 30 == 0:
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
         i += 1
+
+    pose_dir = pathlib.Path(f"logs/poses/{datetime_now}")
+    pose_dir.mkdir(exist_ok=True, parents=True)
+    pose_file = pose_dir / "poses.txt"
+    with open(pose_file, "w") as f:
+        f.write("Frame,Timestamp,Movement,T_WC\n")
+        for frame_id, timestamp, movement, pose in poses:
+            pose_str = " ".join(map(str, pose))
+            f.write(f"{frame_id},{timestamp},{movement},{pose_str}\n")
+    print(f"Poses saved to {pose_file}")
 
     if dataset.save_results:
         save_dir, seq_name = eval.prepare_savedir(args, dataset)

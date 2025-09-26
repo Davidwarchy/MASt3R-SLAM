@@ -62,65 +62,65 @@ def relocalization(frame, keyframes, factor_graph, retrieval_database):
                 factor_graph.solve_GN_rays()
         return successful_loop_closure
 
-def run_backend(cfg, model, states, keyframes, K):
-    set_global_config(cfg)
-    device = keyframes.device
-    factor_graph = FactorGraph(model, keyframes, K, device)
-    retrieval_database = load_retriever(model)
+def run_backend(states, keyframes):
     mode = states.get_mode()
-    while mode is not Mode.TERMINATED:
-        mode = states.get_mode()
-        if mode == Mode.INIT or states.is_paused():
-            time.sleep(0.01)
-            continue
-        if mode == Mode.RELOC:
-            frame = states.get_frame()
-            success = relocalization(frame, keyframes, factor_graph, retrieval_database)
-            if success:
-                states.set_mode(Mode.TRACKING)
-            states.dequeue_reloc()
-            continue
-        idx = -1
-        with states.lock:
-            if len(states.global_optimizer_tasks) > 0:
-                idx = states.global_optimizer_tasks[0]
-        if idx == -1:
-            time.sleep(0.01)
-            continue
-        kf_idx = []
-        n_consec = 1
-        for j in range(min(n_consec, idx)):
-            kf_idx.append(idx - 1 - j)
-        frame = keyframes[idx]
-        retrieval_inds = retrieval_database.update(
-            frame,
-            add_after_query=True,
-            k=config["retrieval"]["k"],
-            min_thresh=config["retrieval"]["min_thresh"],
+    if mode == Mode.INIT or states.is_paused():
+        return
+    if mode == Mode.RELOC:
+        frame = states.get_frame()
+        success = relocalization(frame, keyframes, factor_graph, retrieval_database)
+        if success:
+            states.set_mode(Mode.TRACKING)
+        states.dequeue_reloc()
+        return
+    idx = -1
+    with states.lock:
+        if len(states.global_optimizer_tasks) > 0:
+            idx = states.global_optimizer_tasks[0]
+    if idx == -1:
+        return
+    # Graph Construction
+    kf_idx = []
+    # k to previous consecutive keyframes
+    n_consec = 1
+    for j in range(min(n_consec, idx)):
+        kf_idx.append(idx - 1 - j)
+    frame = keyframes[idx]
+    retrieval_inds = retrieval_database.update(
+        frame,
+        add_after_query=True,
+        k=config["retrieval"]["k"],
+        min_thresh=config["retrieval"]["min_thresh"],
+    )
+    kf_idx += retrieval_inds
+
+    lc_inds = set(retrieval_inds)
+    lc_inds.discard(idx - 1)
+    if len(lc_inds) > 0:
+        print("Database retrieval", idx, ": ", lc_inds)
+
+    kf_idx = set(kf_idx)  # Remove duplicates by using set
+    kf_idx.discard(idx)  # Remove current kf idx if included
+    kf_idx = list(kf_idx)  # convert to list
+    frame_idx = [idx] * len(kf_idx)
+    if kf_idx:
+        factor_graph.add_factors(
+            kf_idx, frame_idx, config["local_opt"]["min_match_frac"]
         )
-        kf_idx += retrieval_inds
-        lc_inds = set(retrieval_inds)
-        lc_inds.discard(idx - 1)
-        if len(lc_inds) > 0:
-            print("Database retrieval", idx, ": ", lc_inds)
-        kf_idx = set(kf_idx)
-        kf_idx.discard(idx)
-        kf_idx = list(kf_idx)
-        frame_idx = [idx] * len(kf_idx)
-        if kf_idx:
-            factor_graph.add_factors(
-                kf_idx, frame_idx, config["local_opt"]["min_match_frac"]
-            )
-        with states.lock:
-            states.edges_ii[:] = factor_graph.ii.cpu().tolist()
-            states.edges_jj[:] = factor_graph.jj.cpu().tolist()
-        if config["use_calib"]:
-            factor_graph.solve_GN_calib()
-        else:
-            factor_graph.solve_GN_rays()
-        with states.lock:
-            if len(states.global_optimizer_tasks) > 0:
-                idx = states.global_optimizer_tasks.pop(0)
+
+    with states.lock:
+        states.edges_ii[:] = factor_graph.ii.cpu().tolist()
+        states.edges_jj[:] = factor_graph.jj.cpu().tolist()
+
+    if config["use_calib"]:
+        factor_graph.solve_GN_calib()
+    else:
+        factor_graph.solve_GN_rays()
+
+    with states.lock:
+        if len(states.global_optimizer_tasks) > 0:
+            idx = states.global_optimizer_tasks.pop(0)
+            print("Finished global optimization for kf ", idx)
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     # Hardcode defaults
     dataset_path = "webots"
     config_path = "config/base.yaml"
-    no_viz = False
+    no_viz = True
 
     # Initialize Webots robot and camera
     robot = Robot()
@@ -195,8 +195,8 @@ if __name__ == "__main__":
     tracker = FrameTracker(model, keyframes, device)
     last_msg = WindowMsg()
 
-    backend = mp.Process(target=run_backend, args=(config, model, states, keyframes, K))
-    backend.start()
+    factor_graph = FactorGraph(model, keyframes, K, device)
+    retrieval_database = load_retriever(model) 
 
     i = 0
     fps_timer = time.time()
@@ -204,6 +204,8 @@ if __name__ == "__main__":
     frames = []
     poses = []
     movement_types = ["left", "right", "forward"]
+
+    save_interval = 100  # save point cloud and poses every 100 frames
 
     while True:
         print(f"Processing frame {i}")
@@ -223,12 +225,12 @@ if __name__ == "__main__":
             motor_l.setVelocity(max_speed)
             motor_r.setVelocity(max_speed)
 
-        # # step for the given velocities 
-        # for _ in range(50):
-        #     if robot.step(timestep) == -1:
-        #         print("Webots simulation stopped")
-        #         states.set_Mode(Mode.TERMINATED)
-        #         break
+        # step for the given velocities 
+        for _ in range(10):
+            if robot.step(timestep) == -1:
+                print("Webots simulation stopped")
+                states.set_Mode(Mode.TERMINATED)
+                break
 
         mode = states.get_mode()
         msg = try_get_msg(viz2main)
@@ -277,6 +279,31 @@ if __name__ == "__main__":
         poses.append((i, timestamp, movement, pose_data))
         print(f"Frame {i}, Timestamp: {timestamp}, Movement: {movement}, T_WC: {pose_data}")
 
+        if i > 0 and i % save_interval == 0:
+            # Save poses file
+            pose_dir = pathlib.Path(f"logs/poses/{datetime_now}")
+            pose_dir.mkdir(exist_ok=True, parents=True)
+            pose_file = pose_dir / f"poses_{i}.txt"
+            with open(pose_file, "w") as f:
+                f.write("Frame,Timestamp,Movement,T_WC\n")
+                for frame_id, timestamp, movement, pose in poses:
+                    pose_str = " ".join(map(str, pose))
+                    f.write(f"{frame_id},{timestamp},{movement},{pose_str}\n")
+            print(f"Intermediate poses saved to {pose_file}")
+
+            # Save reconstruction ply
+            if dataset.save_results:
+                save_dir, seq_name = eval.prepare_savedir(args, dataset)
+                ply_file = save_dir / f"{seq_name}_{i}.ply"
+                eval.save_reconstruction(
+                    save_dir,
+                    ply_file.name,
+                    keyframes,
+                    last_msg.C_conf_threshold,
+                )
+                print(f"Intermediate reconstruction saved to {ply_file}")
+
+
         output_dir_path = pathlib.Path(f"logs/webots_images/{datetime_now}")
         output_dir_path.mkdir(parents=True, exist_ok=True)
         image_path = output_dir_path / f"frame_{i:05d}.png"
@@ -317,11 +344,8 @@ if __name__ == "__main__":
         if add_new_kf:
             keyframes.append(frame)
             states.queue_global_optimization(len(keyframes) - 1)
-            while config["single_thread"]:
-                with states.lock:
-                    if len(states.global_optimizer_tasks) == 0:
-                        break
-                time.sleep(0.01)
+
+        run_backend(states, keyframes)
 
         if i % 30 == 0:
             FPS = i / (time.time() - fps_timer)

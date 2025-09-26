@@ -138,7 +138,7 @@ if __name__ == "__main__":
     # Initialize Webots robot and camera
     robot = Robot()
     timestep = int(robot.getBasicTimeStep())
-    camera = robot.getDevice("camera")
+    camera = robot.getDevice("Astra rgb")
     camera.enable(timestep)
     motor_l = robot.getDevice("motor_1")
     motor_r = robot.getDevice("motor_2")
@@ -223,12 +223,12 @@ if __name__ == "__main__":
             motor_l.setVelocity(max_speed)
             motor_r.setVelocity(max_speed)
 
-        # step for the given velocities 
-        for _ in range(50):
-            if robot.step(timestep) == -1:
-                print("Webots simulation stopped")
-                states.set_Mode(Mode.TERMINATED)
-                break
+        # # step for the given velocities 
+        # for _ in range(50):
+        #     if robot.step(timestep) == -1:
+        #         print("Webots simulation stopped")
+        #         states.set_Mode(Mode.TERMINATED)
+        #         break
 
         mode = states.get_mode()
         msg = try_get_msg(viz2main)

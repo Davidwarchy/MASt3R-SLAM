@@ -19,6 +19,7 @@ from mast3r_slam.multiprocess_utils import new_queue, try_get_msg
 from mast3r_slam.tracker import FrameTracker
 from mast3r_slam.visualization import WindowMsg, run_visualization
 import random 
+import numpy as np
 
 def relocalization(frame, keyframes, factor_graph, retrieval_database):
     with keyframes.lock:
@@ -127,7 +128,7 @@ if __name__ == "__main__":
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.set_grad_enabled(False)
     device = "cuda:0"
-    save_frames = False
+    save_frames = True  # Changed to True to ensure images are saved
     datetime_now = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S')
 
     # Hardcode defaults
@@ -183,15 +184,6 @@ if __name__ == "__main__":
         )
         keyframes.set_intrinsics(K)
 
-    if dataset.save_results:
-        save_dir, seq_name = eval.prepare_savedir(args, dataset)
-        traj_file = save_dir / f"{seq_name}.txt"
-        recon_file = save_dir / f"{seq_name}.ply"
-        if traj_file.exists():
-            traj_file.unlink()
-        if recon_file.exists():
-            recon_file.unlink()
-
     tracker = FrameTracker(model, keyframes, device)
     last_msg = WindowMsg()
 
@@ -203,12 +195,19 @@ if __name__ == "__main__":
 
     frames = []
     poses = []
-    movement_types = ["left", "right", "forward"]
+    movement_types = ["left", "right", "forward", "backward"]
 
     save_interval = 100  # save point cloud and poses every 100 frames
 
+    # Create directories for intermediate outputs
+    base_dir = pathlib.Path(f"logs/{datetime_now}")
+    pose_dir = base_dir / "poses"
+    image_dir = base_dir / "images"
+    pose_dir.mkdir(exist_ok=True, parents=True)
+    image_dir.mkdir(exist_ok=True, parents=True)
+
     while True:
-        print(f"Processing frame {i}")
+        # print(f"Processing frame {i}")
         if robot.step(timestep) == -1:
             print("Webots simulation stopped")
             states.set_Mode(Mode.TERMINATED)
@@ -221,12 +220,15 @@ if __name__ == "__main__":
         elif movement == "right":
             motor_l.setVelocity(max_speed * 0.5)
             motor_r.setVelocity(-max_speed * 0.5)
-        else:  # forward
+        elif movement == "forward":
             motor_l.setVelocity(max_speed)
             motor_r.setVelocity(max_speed)
+        elif movement == "backward":
+            motor_l.setVelocity(-max_speed)
+            motor_r.setVelocity(-max_speed)
 
         # step for the given velocities 
-        for _ in range(10):
+        for _ in range(5):
             if robot.step(timestep) == -1:
                 print("Webots simulation stopped")
                 states.set_Mode(Mode.TERMINATED)
@@ -261,12 +263,6 @@ if __name__ == "__main__":
             else states.get_frame().T_WC
         )
 
-        # Debug Sim3 object
-        print(f"Type: {type(T_WC)}")
-        print(f"T_WC for frame {i}: {T_WC}")
-        print(f"T_WC shape: {T_WC.shape}")
-        print(f"T_WC values: {T_WC}")
-
         # Extract pose data
         try:
             pose_data = T_WC.vec().cpu().numpy()  # Try using .vec() method
@@ -279,10 +275,9 @@ if __name__ == "__main__":
         poses.append((i, timestamp, movement, pose_data))
         print(f"Frame {i}, Timestamp: {timestamp}, Movement: {movement}, T_WC: {pose_data}")
 
+        # Save intermediate results every save_interval frames
         if i > 0 and i % save_interval == 0:
-            # Save poses file
-            pose_dir = pathlib.Path(f"logs/poses/{datetime_now}")
-            pose_dir.mkdir(exist_ok=True, parents=True)
+            # Save poses
             pose_file = pose_dir / f"poses_{i}.txt"
             with open(pose_file, "w") as f:
                 f.write("Frame,Timestamp,Movement,T_WC\n")
@@ -291,22 +286,18 @@ if __name__ == "__main__":
                     f.write(f"{frame_id},{timestamp},{movement},{pose_str}\n")
             print(f"Intermediate poses saved to {pose_file}")
 
-            # Save reconstruction ply
-            if dataset.save_results:
-                save_dir, seq_name = eval.prepare_savedir(args, dataset)
-                ply_file = save_dir / f"{seq_name}_{i}.ply"
-                eval.save_reconstruction(
-                    save_dir,
-                    ply_file.name,
-                    keyframes,
-                    last_msg.C_conf_threshold,
-                )
-                print(f"Intermediate reconstruction saved to {ply_file}")
+            # Save point cloud
+            ply_file = base_dir / f"point_cloud_{i}.ply"
+            eval.save_reconstruction(
+                base_dir,
+                ply_file.name,
+                keyframes,
+                last_msg.C_conf_threshold,
+            )
+            print(f"Intermediate point cloud saved to {ply_file}")
 
-
-        output_dir_path = pathlib.Path(f"logs/webots_images/{datetime_now}")
-        output_dir_path.mkdir(parents=True, exist_ok=True)
-        image_path = output_dir_path / f"frame_{i:05d}.png"
+        # Save image
+        image_path = image_dir / f"frame_{i:05d}.png"
         camera.saveImage(str(image_path), 100)
 
         frame = create_frame(i, img, T_WC, img_size=dataset.img_size, device=device)
@@ -352,28 +343,25 @@ if __name__ == "__main__":
             print(f"FPS: {FPS}")
         i += 1
 
-    pose_dir = pathlib.Path(f"logs/poses/{datetime_now}")
-    pose_dir.mkdir(exist_ok=True, parents=True)
+    # Save final poses
     pose_file = pose_dir / "poses.txt"
     with open(pose_file, "w") as f:
         f.write("Frame,Timestamp,Movement,T_WC\n")
         for frame_id, timestamp, movement, pose in poses:
             pose_str = " ".join(map(str, pose))
             f.write(f"{frame_id},{timestamp},{movement},{pose_str}\n")
-    print(f"Poses saved to {pose_file}")
+    print(f"Final poses saved to {pose_file}")
 
-    if dataset.save_results:
-        save_dir, seq_name = eval.prepare_savedir(args, dataset)
-        eval.save_traj(save_dir, f"{seq_name}.txt", dataset.timestamps, keyframes)
-        eval.save_reconstruction(
-            save_dir,
-            f"{seq_name}.ply",
-            keyframes,
-            last_msg.C_conf_threshold,
-        )
-        eval.save_keyframes(
-            save_dir / "keyframes" / seq_name, dataset.timestamps, keyframes
-        )
+    # Save final point cloud
+    ply_file = base_dir / "point_cloud.ply"
+    eval.save_reconstruction(
+        base_dir,
+        ply_file.name,
+        keyframes,
+        last_msg.C_conf_threshold,
+    )
+    print(f"Final point cloud saved to {ply_file}")
+
     if save_frames:
         savedir = pathlib.Path(f"logs/frames/{datetime_now}")
         savedir.mkdir(exist_ok=True, parents=True)

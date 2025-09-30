@@ -128,7 +128,7 @@ if __name__ == "__main__":
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.set_grad_enabled(False)
     device = "cuda:0"
-    save_frames = True  # Changed to True to ensure images are saved
+    save_frames = False   # Changed to True to ensure images are saved
     datetime_now = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S')
 
     # Hardcode defaults
@@ -361,14 +361,6 @@ if __name__ == "__main__":
         last_msg.C_conf_threshold,
     )
     print(f"Final point cloud saved to {ply_file}")
-
-    if save_frames:
-        savedir = pathlib.Path(f"logs/frames/{datetime_now}")
-        savedir.mkdir(exist_ok=True, parents=True)
-        for i, frame in tqdm.tqdm(enumerate(frames), total=len(frames)):
-            frame = (frame * 255).clip(0, 255)
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(f"{savedir}/{i}.png", frame)
 
     print("done")
     backend.join()

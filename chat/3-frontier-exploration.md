@@ -26,7 +26,7 @@ We want to have another object that does all these things, import it to master s
 Here's how MASt3r-SLAM works. You give it a camera feed only, it returns a 3d reconstruction in the form of a point cloud (PC). Works pretty well, but needs a human being to guide it. It would be desirable if a robot was able to explore and map on its own without human supervision. Most remarkably, it uses only rgb images as input. 
 
 ## Making MASt3r-SLAM autonomous (for active slam)
-* First move randomly, to get a plane to project to. We can extend this later, updating the projection plane with subsequent poses. Take note that there is handcrafting here. 
+* First move randomly, to get a **plane to project to**. We can extend this later, updating the projection plane with subsequent poses. Take note that there is handcrafting here. 
 * What about direction of projection? is it above the plane or below the plane? We could simply check around the area the robot is at. It's likely that if we are in an unroofed place, then the ground below will be mapped (ie, will have point clouds). It's good to take note that this is handcrafting as well. 
 * * If the region is roofed, the point clouds will be further away than those on the ground, so we can use this human-knowledge to map and explore. We could make a grid from a plane at the camera level (at the camera plane - the plane parallel to the ground that cuts through the camera). Note that if our environment is not flat this will not work. 
 * * Instead of relying on these sort of things, we can try approach this from a more simpler perspective. Ie, imbue the robot with forward movements to certain objects. It will likely be moving forward... This is an incomplete thought. 
@@ -35,6 +35,8 @@ Here's how MASt3r-SLAM works. You give it a camera feed only, it returns a 3d re
 
 ### Marking free regions 
 * How do we know hat a region is free? It's usually obvious when using Lidar, but less obvious with RGB images. We can simply check whether we have point clouds where we are facing right now. MASt3r-SLAM doesn't keep track of free areas, and there's no distinction between unknown and free areas from just the point cloud. 
+
+Perhaps one thing that can lead us to better (although it's super human crafted) is sort of keeping note of the direction of free zones. Then we can note from where they were recorded (ie, from approximately). Then we can preserve these free zones as the point cloud updates. 
 
 ### 
 
@@ -52,3 +54,4 @@ Here's how MASt3r-SLAM works. You give it a camera feed only, it returns a 3d re
 
 ## Later Developments
 I keep having this reccuring feeling that approach/avoidance is the key to the whole thing, but I don't know the specific details. I think that I want to complete the autonomous mapping first before doing stuff with
+

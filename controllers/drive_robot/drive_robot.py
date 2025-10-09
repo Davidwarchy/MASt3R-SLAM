@@ -20,6 +20,7 @@ from mast3r_slam.tracker import FrameTracker
 from mast3r_slam.visualization import WindowMsg, run_visualization
 import random 
 import numpy as np
+import csv
 
 def relocalization(frame, keyframes, factor_graph, retrieval_database):
     with keyframes.lock:
@@ -143,6 +144,10 @@ if __name__ == "__main__":
     camera.enable(timestep)
     motor_l = robot.getDevice("motor_1")
     motor_r = robot.getDevice("motor_2")
+    gps = robot.getDevice("gps")
+    gps.enable(timestep)
+    imu = robot.getDevice("imu")
+    imu.enable(timestep)
 
     motor_l.setPosition(float('inf'))
     motor_l.setVelocity(0.0)
@@ -197,7 +202,7 @@ if __name__ == "__main__":
     poses = []
     movement_types = ["left", "right", "forward", "backward"]
 
-    save_interval = 100  # save point cloud and poses every 100 frames
+    save_interval = 100 # save point cloud and poses every 100 frames
 
     # Create directories for intermediate outputs
     base_dir = pathlib.Path(f"logs/{datetime_now}")
@@ -205,6 +210,19 @@ if __name__ == "__main__":
     image_dir = base_dir / "images"
     pose_dir.mkdir(exist_ok=True, parents=True)
     image_dir.mkdir(exist_ok=True, parents=True)
+
+    pose_csv = pose_dir / "poses_log.csv"
+    with open(pose_csv, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "frame", "timestamp", "movement",
+            *[f"T_WC_{j}" for j in range(8)],
+            "gps_x", "gps_y", "gps_z",
+            "imu_roll", "imu_pitch", "imu_yaw"
+        ])
+
+    buffer = []
+
 
     while True:
         # print(f"Processing frame {i}")
@@ -271,30 +289,59 @@ if __name__ == "__main__":
             translation = T_WC.trans.cpu().numpy()
             rotation = T_WC.quat.cpu().numpy()
             pose_data = np.concatenate([rotation, translation])
+            print(f"\tExtracted pose data manually (quat + trans): {pose_data}")
 
-        poses.append((i, timestamp, movement, pose_data))
-        print(f"Frame {i}, Timestamp: {timestamp}, Movement: {movement}, T_WC: {pose_data}")
+        gps_values = gps.getValues()
+        imu_values = imu.getRollPitchYaw()
 
-        # Save intermediate results every save_interval frames
+        # Append collected data
+        entry = [
+            i,
+            timestamp,
+            movement,
+            *np.ravel(pose_data),
+            *gps_values,
+            *imu_values
+        ]
+        poses.append(entry)
+        buffer.append(entry)
+
+        # Print structured info with tabs for readability
+        print(
+            f"Frame {i}\n"
+            f"\tTimestamp:\t{timestamp}\n"
+            f"\tMovement:\t{movement}\n"
+            f"\tT_WC:\t\t{np.array2string(np.round(pose_data, 4), separator=', ', suppress_small=True)}\n"
+            f"\tGPS:\t\t{np.round(gps_values, 4)}\n"
+            f"\tIMU:\t\t{np.round(imu_values, 4)}"
+        )
+
+        # Save intermediate results every `save_interval` frames
         if i > 0 and i % save_interval == 0:
-            # Save poses
-            pose_file = pose_dir / f"poses_{i}.txt"
-            with open(pose_file, "w") as f:
-                f.write("Frame,Timestamp,Movement,T_WC\n")
-                for frame_id, timestamp, movement, pose in poses:
-                    pose_str = " ".join(map(str, pose))
-                    f.write(f"{frame_id},{timestamp},{movement},{pose_str}\n")
-            print(f"Intermediate poses saved to {pose_file}")
+            # Append to master CSV
+            with open(pose_csv, "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerows(buffer)
+            buffer.clear()
+            print(f"\tAppended last {save_interval} entries to {pose_csv}")
+
+            # Save intermediate CSV snapshot
+            intermediate_csv = pose_dir / f"poses_{i}.csv"
+            with open(intermediate_csv, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "frame", "timestamp", "movement",
+                    *[f"T_WC_{j}" for j in range(8)],
+                    "gps_x", "gps_y", "gps_z",
+                    "imu_roll", "imu_pitch", "imu_yaw"
+                ])
+                writer.writerows(poses)
+            print(f"\tIntermediate CSV snapshot saved to {intermediate_csv}")
 
             # Save point cloud
             ply_file = base_dir / f"point_cloud_{i}.ply"
-            eval.save_reconstruction(
-                base_dir,
-                ply_file.name,
-                keyframes,
-                last_msg.C_conf_threshold,
-            )
-            print(f"Intermediate point cloud saved to {ply_file}")
+            eval.save_reconstruction(base_dir, ply_file.name, keyframes, last_msg.C_conf_threshold)
+            print(f"\tIntermediate point cloud saved to {ply_file}")
 
         # Save image
         image_path = image_dir / f"frame_{i:05d}.png"

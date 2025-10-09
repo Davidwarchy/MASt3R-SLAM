@@ -18,12 +18,10 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/kitchen/components/protos/HotPlate.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/drinks/protos/Can.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/tables/protos/Table.proto"
-EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/chairs/protos/Chair.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/fruits/protos/FruitBowl.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/fruits/protos/Orange.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/fruits/protos/Apple.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/tables/protos/Desk.proto"
-EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/chairs/protos/WoodenChair.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/school_furniture/protos/Book.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/living_room_furniture/protos/Armchair.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/living_room_furniture/protos/Sofa.proto"
@@ -41,8 +39,8 @@ WorldInfo {
   basicTimeStep 16
 }
 Viewpoint {
-  orientation -0.4060317414729578 0.40603290835639455 0.8187035496735586 1.7695128936691449
-  position -3.879934779521019 -14.284005020800887 15.888926422025028
+  orientation -0.4094376357620678 0.40943878340238354 0.815304056820242 1.773590273392398
+  position -3.879934841361064 -14.13132385287943 16.01973730368369
   exposure 0.5
 }
 TexturedBackground {
@@ -463,50 +461,6 @@ Table {
   rotation 0 0 1 1.5708
   name "table(1)"
 }
-Chair {
-  translation -1.4606 -5.4128 -0.0023
-  rotation 0 0 1 1.5708
-  name "chair 1"
-  color 0.13333333333333333 0.13333333333333333 0.13333333333333333
-  physics Physics {
-    centerOfMass [
-      0 0 0.45
-    ]
-  }
-}
-Chair {
-  translation -0.6425 -4.4443 -0.0023
-  rotation 0 0 1 -1.5707953071795862
-  name "chair 2"
-  color 0.13333333333333333 0.13333333333333333 0.13333333333333333
-  physics Physics {
-    centerOfMass [
-      0 0 0.45
-    ]
-  }
-}
-Chair {
-  translation -1.3943 -4.4875 -0.0023
-  rotation 0 0 1 -1.5707953071795862
-  name "chair 3"
-  color 0.13333333333333333 0.13333333333333333 0.13333333333333333
-  physics Physics {
-    centerOfMass [
-      0 0 0.45
-    ]
-  }
-}
-Chair {
-  translation -0.7069 -5.3809 -0.0023
-  rotation 0 0 1 1.5708
-  name "chair 4"
-  color 0.13333333333333333 0.13333333333333333 0.13333333333333333
-  physics Physics {
-    centerOfMass [
-      0 0 0.45
-    ]
-  }
-}
 FruitBowl {
   translation -0.7155 -4.8806 0.7397
   rotation 0 0 1 0.944615
@@ -529,15 +483,6 @@ Apple {
 Desk {
   translation -5.125 -0.5126 0
   rotation 0 0 1 1.5708
-}
-WoodenChair {
-  translation -5.15 -0.9 0
-  rotation 0 0 1 1.5708
-  physics Physics {
-    centerOfMass [
-      0 0 0.45
-    ]
-  }
 }
 Book {
   translation -4.6976 -0.5922 0.7199

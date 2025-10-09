@@ -1,0 +1,167 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/appearances/protos/Parquetry.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/apartment_structure/protos/Wall.proto"
+EXTERNPROTO "../protos/Astra.proto"
+
+WorldInfo {
+  basicTimeStep 16
+}
+Viewpoint {
+  orientation -0.4718876876553588 0.6019031914788888 0.6442317582414009 2.1226074181132573
+  position -1.7648328625318181 -1.2809302286376136 13.60863222046335
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+  castShadows FALSE
+}
+RectangleArena {
+  floorSize 10 20
+  floorAppearance Parquetry {
+    type "light strip"
+  }
+  wallThickness 0.5
+  wallHeight 2
+}
+DEF RbtWhse Robot {
+  translation -2 -3 0
+  rotation 0 0 1 3.14159
+  children [
+    DEF body Pose {
+      translation 0 0 0.166
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0 0 1
+            roughness 1
+            metalness 0
+          }
+          geometry Cylinder {
+            height 0.32
+            radius 0.18
+          }
+        }
+      ]
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        anchor 0.18 0 0.1
+      }
+      device [
+        RotationalMotor {
+          name "motor_1"
+        }
+      ]
+      endPoint DEF wheel1_ Solid {
+        translation 0.18 0 0.1
+        rotation 0 1 0 1.5707963267948966
+        children [
+          DEF wheel Shape {
+            appearance PBRAppearance {
+              baseColor 1 0 0
+              roughness 1
+              metalness 0
+            }
+            geometry Cylinder {
+              height 0.04
+              radius 0.1
+            }
+          }
+        ]
+        boundingObject USE wheel
+        physics DEF wheel_physics Physics {
+        }
+      }
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        anchor -0.18 0 0.1
+      }
+      device [
+        RotationalMotor {
+          name "motor_2"
+        }
+      ]
+      endPoint DEF wheel4_ Solid {
+        translation -0.18 -0.0005252487504726964 0.10003918237593952
+        rotation 0.562784399657833 0.6058478231690909 0.5623363181078084 2.051469975905846
+        children [
+          USE wheel
+        ]
+        name "wheel4_"
+        boundingObject USE wheel
+        physics USE wheel_physics
+      }
+    }
+    Solid {
+      translation 0.06 -0.18 0.28
+      children [
+        DEF eye Shape {
+          appearance PBRAppearance {
+            baseColor 1 0 0
+            roughness 1
+          }
+          geometry Box {
+            size 0.02 0.02 0.02
+          }
+        }
+      ]
+      name "eye_1"
+    }
+    Solid {
+      translation -0.06 -0.18 0.28
+      children [
+        USE eye
+      ]
+      name "eye_2"
+    }
+    Pose {
+      translation 0 0 0.32
+      children [
+        InertialUnit {
+          rotation 0 0 1 -1.5707996938995747
+          name "imu"
+          description "i"
+        }
+        GPS {
+        }
+        Astra {
+          translation 0 -0.15 0
+          rotation 0 0 1 -1.5707953071795862
+        }
+        Display {
+          width 128
+          height 128
+        }
+      ]
+    }
+  ]
+  name "robot_180000_um_0"
+  boundingObject USE body
+  physics Physics {
+    density 1
+  }
+  controller "drive_robot"
+  supervisor TRUE
+}
+Wall {
+  translation 1 5 0
+  size 8 1 2
+}
+Solid {
+  translation 0 7 0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0 1 0.8
+      }
+      geometry Box {
+        size 1 1 0.01
+      }
+    }
+  ]
+}

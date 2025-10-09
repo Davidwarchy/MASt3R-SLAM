@@ -215,11 +215,11 @@ if __name__ == "__main__":
 
         movement = random.choice(movement_types)
         if movement == "left":
-            motor_l.setVelocity(-max_speed * 0.5)
-            motor_r.setVelocity(max_speed * 0.5)
+            motor_l.setVelocity(-max_speed)
+            motor_r.setVelocity(max_speed)
         elif movement == "right":
-            motor_l.setVelocity(max_speed * 0.5)
-            motor_r.setVelocity(-max_speed * 0.5)
+            motor_l.setVelocity(max_speed)
+            motor_r.setVelocity(-max_speed)
         elif movement == "forward":
             motor_l.setVelocity(max_speed)
             motor_r.setVelocity(max_speed)

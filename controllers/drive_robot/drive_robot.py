@@ -160,7 +160,6 @@ if __name__ == "__main__":
     robot.step(timestep)
 
     load_config(config_path)
-    print("Using Webots dataset")
     print(config)
 
     manager = mp.Manager()
@@ -309,6 +308,7 @@ if __name__ == "__main__":
 
         # Print structured info with tabs for readability
         print(
+            f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - "
             f"Frame {i}\n"
             f"\tTimestamp:\t{timestamp}\n"
             f"\tMovement:\t{movement}\n"

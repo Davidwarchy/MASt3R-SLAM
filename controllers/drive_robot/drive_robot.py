@@ -22,6 +22,7 @@ from mast3r_slam.visualization import WindowMsg, run_visualization
 import random 
 import numpy as np
 import csv
+from scipy.spatial.transform import Rotation as Rot
 
 def relocalization(frame, keyframes, factor_graph, retrieval_database):
     with keyframes.lock:
@@ -125,6 +126,39 @@ def run_backend(states, keyframes):
             idx = states.global_optimizer_tasks.pop(0)
             print("Finished global optimization for kf ", idx)
 
+def compute_position(vec):
+    tx, ty, tz, qx, qy, qz, qw, s = vec
+    t = np.array([tx, ty, tz])
+    quat = np.array([qx, qy, qz, qw])
+    rot = Rot.from_quat(quat)
+    R = rot.as_matrix()
+    pos = - (1 / s) * (R.T @ t)
+    return pos
+
+def establish_plane(poses):
+    points_list = []
+    for p in poses:
+        vec = p[3:11]  # tx, ty, tz, qx, qy, qz, qw, s
+        pos = compute_position(vec)
+        points_list.append(pos)
+    points = np.array(points_list)
+    center = np.mean(points, axis=0)
+    centered = points - center
+    cov = np.cov(centered.T)
+    eigenvalues, eigenvectors = np.linalg.eig(cov)
+    idx = np.argsort(eigenvalues)[::-1]
+    eigenvectors = eigenvectors[:, idx]
+    eigenvalues = eigenvalues[idx]
+    normal = eigenvectors[:, 2]
+    variance_explained = sum(eigenvalues[:2]) / sum(eigenvalues)
+    principal_components = eigenvectors[:, :2]
+    return center, principal_components, normal, variance_explained
+
+def project_position(pos, center, principal_components):
+    centered = pos - center
+    proj = centered @ principal_components
+    return proj[0], proj[1]
+
 if __name__ == "__main__":
     mp.set_start_method("spawn")
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -200,7 +234,7 @@ if __name__ == "__main__":
 
     frames = []
     poses = []
-    movement_types = ["left", "right", "forward", "backward"]
+    movement_types = ["left", "right", "forward"]
 
     save_interval = 100 # save point cloud and poses every 100 frames
 
@@ -223,6 +257,10 @@ if __name__ == "__main__":
 
     buffer = []
 
+    initial_exploration_steps = 50
+    plane_established = False
+    center = None
+    principal_components = None
 
     while True:
         # print(f"Processing frame {i}")
@@ -389,6 +427,18 @@ if __name__ == "__main__":
         if i % 30 == 0:
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
+
+        if not plane_established and i >= initial_exploration_steps:
+            center, principal_components, normal, var_exp = establish_plane(poses[:initial_exploration_steps])
+            print(f"Established plane: normal {normal}, variance explained {var_exp}")
+            plane_established = True
+
+        if plane_established:
+            current_vec = poses[-1][3:11]
+            current_pos = compute_position(current_vec)
+            proj_x, proj_y = project_position(current_pos, center, principal_components)
+            print(f"Current position in plane: ({proj_x}, {proj_y})")
+
         i += 1
 
     # Save final poses

@@ -1,4 +1,3 @@
-# drive_robot.py
 import datetime
 import pathlib
 import sys
@@ -23,6 +22,7 @@ import random
 import numpy as np
 import csv
 from scipy.spatial.transform import Rotation as Rot
+from robot_controller import RobotController
 
 def relocalization(frame, keyframes, factor_graph, retrieval_database):
     with keyframes.lock:
@@ -191,6 +191,8 @@ if __name__ == "__main__":
 
     max_speed = torch.pi * 2
 
+    mobility = RobotController(robot, motor_l, motor_r, timestep)
+
     robot.step(timestep)
 
     load_config(config_path)
@@ -234,7 +236,7 @@ if __name__ == "__main__":
 
     frames = []
     poses = []
-    movement_types = ["left", "right", "forward"]
+    movement_types = ["forward"]  # Only forward movement
 
     save_interval = 100 # save point cloud and poses every 100 frames
 
@@ -269,21 +271,12 @@ if __name__ == "__main__":
             states.set_Mode(Mode.TERMINATED)
             break
 
-        movement = random.choice(movement_types)
-        if movement == "left":
-            motor_l.setVelocity(-max_speed)
-            motor_r.setVelocity(max_speed)
-        elif movement == "right":
-            motor_l.setVelocity(max_speed)
-            motor_r.setVelocity(-max_speed)
-        elif movement == "forward":
-            motor_l.setVelocity(max_speed)
-            motor_r.setVelocity(max_speed)
-        elif movement == "backward":
-            motor_l.setVelocity(-max_speed)
-            motor_r.setVelocity(-max_speed)
+        # Default to forward movement
+        movement = "forward"
+        motor_l.setVelocity(max_speed)
+        motor_r.setVelocity(max_speed)
 
-        # step for the given velocities 
+        # Step for the given velocities 
         for _ in range(5):
             if robot.step(timestep) == -1:
                 print("Webots simulation stopped")
@@ -437,6 +430,11 @@ if __name__ == "__main__":
             current_vec = poses[-1][3:11]
             current_pos = compute_position(current_vec)
             proj_x, proj_y = project_position(current_pos, center, principal_components)
+            stuck = mobility.update_position(current_pos)
+            if stuck:
+                # Optionally reset SLAM states or just continue
+                print("[Main] Robot was stuck and has performed random sequence.")
+                continue  # Skip SLAM update during recovery
             print(f"Current position in plane: ({proj_x}, {proj_y})")
 
         i += 1
